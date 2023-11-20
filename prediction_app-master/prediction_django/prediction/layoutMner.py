@@ -5,12 +5,12 @@ from transformers import LayoutLMv3ForTokenClassification, LayoutLMv3Processor
 
 
 def unnormalize_box(bbox, width, height):
-    return [
+    return np.array([
         width * (bbox[0] / 1000),
         height * (bbox[1] / 1000),
         width * (bbox[2] / 1000),
         height * (bbox[3] / 1000)
-    ]
+    ])
 
 
 class LayoutLMNER:
