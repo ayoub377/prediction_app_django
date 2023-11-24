@@ -9,7 +9,6 @@ from tabulate import tabulate
 from .layoutMner import LayoutLMNER
 
 
-
 def scale_bbox_coordinates(bboxes, image_width, image_height, scaled_min, scaled_max):
     scaled_bboxes = []
 
@@ -50,7 +49,6 @@ def ocr_and_scale_bboxes(image_path, scaled_min=0, scaled_max=1000):
 # change the image path to raw image from post api
 
 def format_for_layoutlm(image_data):
-
     try:
         # Use PIL to open the image from raw data
         image = Image.open(image_data)
@@ -153,6 +151,7 @@ def get_results_json(true_predictions_trimmed_par, true_confidence_scores_par, e
 
     # Return the data as JSON
     return json.dumps(filtered_word_confidence_list, indent=2)
+
 
 def handle_uploaded_file(uploaded_file):
     # Create a temporary file path
