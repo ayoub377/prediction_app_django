@@ -1,32 +1,35 @@
 import json
 import os
 import uuid
+
+import numpy as np
 from PIL import Image
 from django.conf import settings
 from paddleocr import PaddleOCR
 
 from .layoutMner import LayoutLMNER
+from .serializers import PredictionSerializer
 
 
+# fonction de scaling des bboxes
 def scale_bbox_coordinates(bboxes, image_width, image_height, scaled_min, scaled_max):
-    scaled_bboxes = []
-
-    for bbox in bboxes:
-        scaled_bbox = [
+    return [
+        [
             int((coord / image_width) * scaled_max) if i % 2 == 0 else int((coord / image_height) * scaled_max)
             for i, coord in enumerate(bbox)
         ]
-        scaled_bboxes.append(scaled_bbox)
-    return scaled_bboxes
+        for bbox in bboxes
+    ]
 
 
+# etape d'OCR
 def ocr_and_scale_bboxes(image_path, scaled_min=0, scaled_max=1000):
     img = Image.open(image_path)
 
     # Obtain OCR results
-
-    ocr = PaddleOCR(lang="fr", use_angle_cls=False)
-    ocr_result = ocr.ocr(image_path)
+    ocr = PaddleOCR(lang="fr", use_angle_cls=True, enable_mkldnn=True)
+    img_array = np.array(img)
+    ocr_result = ocr.ocr(img_array)
 
     tokens = []
     bboxes = []
@@ -45,9 +48,9 @@ def ocr_and_scale_bboxes(image_path, scaled_min=0, scaled_max=1000):
     return tokens, scaled_bboxes
 
 
-# change the image path to raw image from post api
-
+# fonction qui retourne le data sous forme de json objet
 def format_for_layoutlm(image_data):
+    # verifie si l image va s ouvrir
     try:
         # Use PIL to open the image from raw data
         image = Image.open(image_data)
@@ -63,12 +66,14 @@ def format_for_layoutlm(image_data):
     data_id = uuid.uuid4().hex
 
     try:
-        # Save the image to a file
+        # enregistre l image
         temp_image_path = os.path.join(settings.MEDIA_ROOT, f'image_{data_id}.png')
         image.save(temp_image_path)
-        # Convert words and bounding boxes to the desired format
+
+        # Converti les tokens et bboxes
         tokens, bboxes = ocr_and_scale_bboxes(temp_image_path)
-        # Data in the desired format
+
+        # format correcte des donnees
         formatted_data = {
             'id': data_id,
             'image': temp_image_path,  # Update the image path or use other appropriate naming
@@ -76,13 +81,17 @@ def format_for_layoutlm(image_data):
             'ner_tags': ner_tags,
             'tokens': tokens
         }
-        # Return the data
+
+        print("ocr process done")
+        # Retourne les  donnees
         return formatted_data
+
     except Exception as e:
         print(f"Error processing Json Data: {str(e)}")
         return None
 
 
+# diviser le json en deux parties
 def split_json_data(data):
     # Define the criteria for splitting (e.g., based on the length of words or any other criteria)
     split_point = len(data["tokens"]) // 2  # Splitting based on the number of words
@@ -107,6 +116,7 @@ def split_json_data(data):
     return top_data, bottom_data
 
 
+# fonction qui traite le json
 def post_process(true_predictions, trimmed_list):
     true_confidence_scores = []
     true_predictions_trimmed = true_predictions[1:-1]
@@ -122,12 +132,13 @@ def load_json_data(file_path):
     return data
 
 
+# fonction qui retourne les resultats de prediction
 def get_results_json(true_predictions_trimmed_par, true_confidence_scores_par, example_par):
     # Create a list to store dictionaries representing word-label pairs and confidence scores
     word_confidence_list = []
 
     for idx, (word, prediction) in enumerate(zip(example_par['tokens'], true_predictions_trimmed_par)):
-        if prediction != 'O':
+        if word not in word_confidence_list and prediction != 'O':
             if prediction == 'O':
                 predicted_label = 'other'
             else:
@@ -138,30 +149,28 @@ def get_results_json(true_predictions_trimmed_par, true_confidence_scores_par, e
             # Create a dictionary for each word-label pair
             word_data = {
                 'Word': word,
-                'Predicted Label': predicted_label.lower(),
-                'Confidence Score': confidence_score
+                'Predicted_Label': predicted_label.lower(),
+                'Confidence_Score': confidence_score
             }
 
             word_confidence_list.append(word_data)
 
     # Filter out labels 'other' and 'o'
     filtered_word_confidence_list = [data for data in word_confidence_list if
-                                     data['Predicted Label'] != 'other' and data['Predicted Label'] != 'o']
+                                     data['Predicted_Label'] != 'other' and data['Predicted_Label'] != 'o']
 
-    # Return the data as JSON
-    return json.dumps(filtered_word_confidence_list, indent=2)
+    # Use the serializer to convert the list of dictionaries to JSON
+    serializer = PredictionSerializer(filtered_word_confidence_list, many=True)
+    serialized_data = serializer.data
+
+    return serialized_data
 
 
-def handle_uploaded_file(uploaded_file):
+# delete image after processing
+def delete_image(temp_path):
     # Create a temporary file path
-    temp_file_path = os.path.join(settings.MEDIA_ROOT, 'temp', uploaded_file.name)
-
-    # Write the uploaded file data to the temporary file
-    with open(temp_file_path, 'wb') as temp_file:
-        for chunk in uploaded_file.chunks():
-            temp_file.write(chunk)
-
-    return temp_file_path
+    os.remove(temp_path)
+    print(f"image deleted at following path: {temp_path}")
 
 
 model_path = "ineoApp/LayoutLMv3_5_entities_filtred_14"
