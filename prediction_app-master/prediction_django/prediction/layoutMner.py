@@ -15,18 +15,19 @@ def unnormalize_box(bbox, width, height):
 
 class LayoutLMNER:
 
+    # initialiser les champs pour le modele
     def __init__(self, model_path):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = LayoutLMv3ForTokenClassification.from_pretrained(model_path).to(self.device)
         self.processor = LayoutLMv3Processor.from_pretrained(model_path, apply_ocr=False)
         self.id2label = self.model.config.id2label
 
+    # fonction qui fait les predictions
     def predict(self, example):
         if isinstance(example['image'], str):
             image = Image.open(example['image'])
 
         width, height = image.size
-
         encoded_inputs = self.processor(image, example['tokens'], boxes=example['bboxes'], return_offsets_mapping=True,
                                         return_tensors="pt", max_length=2048, truncation=True)
 
@@ -49,5 +50,4 @@ class LayoutLMNER:
         confidence_scores, _ = probabilities.max(dim=-1)
         trimmed_tensor = confidence_scores[:, 1:-1]  # Remove the first and last columns
         trimmed_list_values = trimmed_tensor.squeeze().tolist()
-
         return true_predictions, true_boxes_values, trimmed_list_values
