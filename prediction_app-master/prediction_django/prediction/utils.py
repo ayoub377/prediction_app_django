@@ -4,7 +4,6 @@ import uuid
 from PIL import Image
 from django.conf import settings
 from paddleocr import PaddleOCR
-from tabulate import tabulate
 
 from .layoutMner import LayoutLMNER
 
